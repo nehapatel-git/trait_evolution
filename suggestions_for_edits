@@ -1,0 +1,4 @@
+Make filtering step for sequences prior to alignment more logical
+Consider use of other models for clustering and tree building
+View a dendogram of all specimens to determine if there are any outgroups and use a distance matrix to determine most representative sequence from each species instead of random sampling
+Make tree figure look nicer, maybe change colours around, maybe find a way to include the scale bar in the figure
