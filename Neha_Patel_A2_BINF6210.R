@@ -107,7 +107,6 @@ dfGene_Subset.alignment <- DNAStringSet(muscle::muscle(dfGene_Subset$Sequence), 
 #View alignment
 BrowseSeqs(dfGene_Subset.alignment)
 
-
 #Export alignment into a FASTA file. 
 writeXStringSet(dfGene_Subset.alignment, file = "alignment.fasta", format = "fasta")
 #File was viewed in MEGA. Since this gene codes for a protein, the sequences were translated with the genetic code set to vertebrate mitochondrial. Gaps were minimal, sequences were similar, and stop codons were not found in the reading frames. This indicates accuracy in the alignment, no contamination of data, and lack of reverse compliments.
