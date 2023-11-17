@@ -1,5 +1,4 @@
 #Load required packages----
-
 library(rentrez)
 library(Biostrings)
 library(tidyverse)
