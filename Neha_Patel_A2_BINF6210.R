@@ -1,4 +1,5 @@
-#Load packages
+#Load required packages----
+
 library(rentrez)
 library(Biostrings)
 library(tidyverse)
@@ -9,6 +10,19 @@ library(utils)
 library(tidyverse)
 library(phytools)
 library(ggplot2)
+
+#Functions----
+
+#Creating function for sequence length visualization throughout the code; to calculate and plot sequence length histogram using ggplot2 package
+plotSequenceLengthHistogram <- function(df, sequenceColumn, binwidth = 5) {
+  ggplot(df, aes(x = nchar(.data[[sequenceColumn]]))) +
+    geom_histogram(binwidth = binwidth, fill = "blue", color = "black") +
+    labs(x = "Sequence Length (bp)", y = "Frequency") +
+    ggtitle(paste("Sequence Length Histogram"))
+}
+
+
+#Data Acquisition and Exploration----
 
 #Determine number of hits from searching nuccore database for Phaethornis genus and ND2 gene
 Gene_search_explore <- entrez_search(db = "nuccore", term = "(Phaethornis[ORGN] AND ND2[Gene]")
@@ -28,23 +42,19 @@ Gene_fetch <- FetchFastaFiles(searchTerm = "(Phaethornis[ORGN] AND ND2[Gene]", s
 dfGene <- MergeFastaFiles(filePattern = "gene_fetch*")
 
 #Determine range of sequences to narrow search and reduce variability of sequence length
-hist(nchar(dfGene$Sequence))
+summary(nchar(dfGene$Sequence))
+plotSequenceLengthHistogram(dfGene, "Sequence", binwidth = 150)
+
+#Filtering search by sequence length to obtain sequences of similar lengths. Based on the summary and histogram, a majority of sequence lengths were approximately between 1000 to 1050 basepairs. Fetch appropriate sequences and merge files into a dataframe.
+min_length <- 1000
+max_length <- 1050
+dfGene <- dfGene %>%
+  filter(nchar(Sequence) >= min_length, nchar(Sequence) <= max_length)
+
+#Checking if filtering by sequence length worked. The result contains sequences of less variable sequence length. 
+plotSequenceLengthHistogram(dfGene, "Sequence")
 summary(nchar(dfGene$Sequence))
 
-#Use ggplot2 package to create a histogram
-ggplot(dfGene, aes(x = nchar(Sequence))) + geom_histogram(binwidth = 100, fill = "blue", color = "black") + labs(x = "Sequence Length (bp)", y = "Frequency")
-
-#Remove data with variable sequence length to ensure this data is not used downstream.
-rm(dfGene, Gene_search, Gene_fetch)
-
-#Re-do search by adjusting sequence length to obtain sequences of similar lengths. Based on the summary and histogram, a majority of sequence lengths were approximately between 1000 to 1050 basepairs. Fetch appropriate sequences and merge files into a dataframe.
-Gene_search <- entrez_search(db = "nuccore", term = "(Phaethornis[ORGN] AND ND2[Gene] AND 1000:1050[SLEN]", retmax = maxHits, use_history = T)
-Gene_fetch <- FetchFastaFiles(searchTerm = "(Phaethornis[ORGN] AND ND2[Gene] AND 1000:1050[SLEN]", seqsPerFile = maxHits, fastaFileName = "gene_fetch.fasta")
-dfGene <- MergeFastaFiles(filePattern = "gene_fetch*")
-
-#Determine variability in sequence length. The new search contains sequences of less variable sequence length
-hist(nchar(dfGene$Sequence))
-summary(nchar(dfGene$Sequence))
 
 #Determine how many unknown nucleotides and gaps are present in data
 table(str_count(dfGene$Sequence, "N"))
@@ -68,6 +78,7 @@ dfGene$Sequence_Filtered <- NULL
 #Extract species name and accession numbers into separate columns
 dfGene$Species_Name <- word(dfGene$Title, 2L, 3L)
 dfGene$AccessionNumber <- word(dfGene$Title, 1L)
+
 #Rearrange the columns
 dfGene <- dfGene[, c("Title","AccessionNumber", "Species_Name", "Sequence")]
 
@@ -80,6 +91,11 @@ dfGene_Subset <- dfGene %>%
   group_by(Species_Name) %>% 
   sample_n(1)
 
+#Looking at the sequence lengths of our subset
+plotSequenceLengthHistogram(dfGene_Subset, "Sequence")
+
+#Sequence Alignment----
+
 #Prepare data for alignment by converting data types
 dfGene_Subset <- as.data.frame(dfGene_Subset)
 dfGene_Subset$Sequence <- DNAStringSet(dfGene_Subset$Sequence)
@@ -91,9 +107,12 @@ dfGene_Subset.alignment <- DNAStringSet(muscle::muscle(dfGene_Subset$Sequence), 
 #View alignment
 BrowseSeqs(dfGene_Subset.alignment)
 
+
 #Export alignment into a FASTA file. 
 writeXStringSet(dfGene_Subset.alignment, file = "alignment.fasta", format = "fasta")
 #File was viewed in MEGA. Since this gene codes for a protein, the sequences were translated with the genetic code set to vertebrate mitochondrial. Gaps were minimal, sequences were similar, and stop codons were not found in the reading frames. This indicates accuracy in the alignment, no contamination of data, and lack of reverse compliments.
+
+#Distance Matrix, Clustering, and Mapping to Phylogenetic Tree----
 
 #Convert alignment to a DNAbin data class in order to create a distance matrix to build a tree
 dist_matrix <- dist.dna(as.DNAbin(dfGene_Subset.alignment), model = "TN93")
@@ -102,8 +121,10 @@ dist_matrix <- dist.dna(as.DNAbin(dfGene_Subset.alignment), model = "TN93")
 nj_tree <- nj(dist_matrix)
 plot(nj_tree)
 
-#Proceeding to map traits onto the phylogenetic tree. Download trait data from AVONET dataset (titled AVONET Supplementary dataset 1.xlsx). To convert to a format that is more compatible with R, save worksheet of interest (AVONET_Raw_Data) as a CSV file. Import file into R.
-AVONET <- read_csv("/Users/nehapatel/Downloads/Avonet Supplementary dataset 1_import.csv", na = "NA")
+
+#Proceeding to map traits onto the phylogenetic tree. Download trait data from AVONET dataset (titled AVONET Supplementary dataset 1.xlsx). To convert to a format that is more compatible with R, save worksheet of interest (AVONET_Raw_Data) as a CSV file with the name below. Import file into R using a relative path assuming the downloaded data is in your current working session. 
+avonet_file_path <- "AVONET Supplementary dataset 1_import.csv"
+AVONET <- read_csv(avonet_file_path, na = "NA")
 
 #Setting name of genus to genus of interest to extract appropriate data from database
 genus <- "Phaethornis"
@@ -122,12 +143,15 @@ genus_mean_trait <- genus_trait %>%
 #Merge dataframes to extract only trait data for species included in the previously created phylogenetic tree
 dfGene_mean_trait <- merge(dfGene_Subset, genus_mean_trait, by.x = "Species_Name", by.y = "Species1_BirdLife", all.x = TRUE)
 
+#Confirming the sequence lengths has stayed consistent 
+plotSequenceLengthHistogram(dfGene_mean_trait, "Sequence")
+
 #Create a named vector from the dataframe for compatibility with contMap from the phytools package
 trait_vector <- setNames(dfGene_mean_trait$Mean_Tarsus_Length, dfGene_mean_trait$Species_Name)
 
-#IUCN red list data was downloaded from https://www.iucnredlist.org/ by searching for keyword "Phaethornis"
-#Impor data into R
-IUCN <- read_csv("/Users/nehapatel/Downloads/assessments.csv")
+#IUCN red list data was downloaded from https://www.iucnredlist.org/ by searching for keyword "Phaethornis". Import data into R using a relative path assuming the downloaded data is in your current working session.
+iucn_file_path <- "IUCN_data.csv"
+IUCN <- read_csv(iucn_file_path)
 
 #Extract species names and corresponding red list category from dataframe
 IUCN_subset <- IUCN[,c("scientificName","redlistCategory")]
@@ -147,7 +171,7 @@ trait.contMap<-setMap(trait.contMap, c("white","#FFFFB2","#FECC5C","#FD8D3C","#E
 #Prepare to add IUCN data by setting colours to each category displayed in IUCN dataframe
 cols = setNames(c("navy", "royalblue","skyblue"), c("Near Threatened","Vulnerable","Least Concern"))
 
-#Code in lines 153-162 from: http://www.phytools.org/Cordoba2017/ex/15/Plotting-methods.html and http://blog.phytools.org/2017/01/overlaying-contmap-style-continuous.html
+#Code in lines 177-185 from: http://www.phytools.org/Cordoba2017/ex/15/Plotting-methods.html and http://blog.phytools.org/2017/01/overlaying-contmap-style-continuous.html
 
 #Plot red list category as traits to the phylogenetic tree with the dotTree function from phytools
 dotTree(nj_tree,IUCN_vector,legend = FALSE,length=5,fsize=0.8,lwd=7,ftype="i", colors = cols)
