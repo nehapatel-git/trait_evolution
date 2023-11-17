@@ -20,7 +20,6 @@ plotSequenceLengthHistogram <- function(df, sequenceColumn, binwidth = 5) {
     ggtitle(paste("Sequence Length Histogram"))
 }
 
-
 #Data Acquisition and Exploration----
 
 #Determine number of hits from searching nuccore database for Phaethornis genus and ND2 gene
