@@ -9,39 +9,44 @@ library(utils)
 library(tidyverse)
 library(phytools)
 library(ggplot2)
+source("scripts/Entrez_Functions.R")
 
 #Functions----
 
-#Creating function for sequence length visualization throughout the code; to calculate and plot sequence length histogram using ggplot2 package
-plotSequenceLengthHistogram <- function(df, sequenceColumn, binwidth = 5) {
+#Function to generate a histogram for # bp of sequences
+plotbpLengthHistogram <- function(df, sequenceColumn, binwidth = 5) {
   ggplot(df, aes(x = nchar(.data[[sequenceColumn]]))) +
     geom_histogram(binwidth = binwidth, fill = "blue", color = "black") +
     labs(x = "Sequence Length (bp)", y = "Frequency") +
-    ggtitle(paste("Sequence Length Histogram"))
+    ggtitle(paste("Distribution of Sequence length"))
 }
 
 
 #Data Acquisition and Exploration----
 
-#Determine number of hits from searching nuccore database for Phaethornis genus and ND2 gene
-Gene_search_explore <- entrez_search(db = "nuccore", term = "(Phaethornis[ORGN] AND ND2[Gene]")
-Gene_search_explore
+#Define taxa and gene of interest
+taxa <- "Phaethornis"
+gene <- "ND2"
+
+search_term <- sprintf("%s[ORGN] AND %s[Gene]", taxa, gene)
+
+#Determine number of hits from searching nuccore database for specified taxa and gene of interest
+gene_search_explore <- entrez_search(db = "nuccore", term = search_term)
 
 #Count number of hits
-maxHits <- Gene_search_explore$count
+maxHits <- gene_search_explore$count
 
-#Number of hits is close to 300, use web history to fetch sequences
-Gene_search <- entrez_search(db = "nuccore", term = "(Phaethornis[ORGN] AND ND2[Gene]", retmax = maxHits, use_history = T)
+#Use web history to fetch sequences
+gene_search <- entrez_search(db = "nuccore", term = search_term, retmax = maxHits, use_history = T)
 
 #Download Entrez_Functions.R in current directory and load to extract FASTA files from web_history objects
-source("Entrez_Functions.R")
-Gene_fetch <- FetchFastaFiles(searchTerm = "(Phaethornis[ORGN] AND ND2[Gene]", seqsPerFile = 300, fastaFileName = "gene_fetch.fasta")
+gene_fetch <- FetchFastaFiles(searchTerm = search_term, seqsPerFile = 100, fastaFileName = "raw_data/gene_fetch/gene_fetch.fasta")
 
 #Merge seqeunce files into one dataframe
-dfGene <- MergeFastaFiles(filePattern = "gene_fetch*")
+gene_seqs <- MergeFastaFiles(filePattern = "gene_fetch*")
 
 #Determine range of sequences to narrow search and reduce variability of sequence length
-summary(nchar(dfGene$Sequence))
+summary(nchar(gene_seqs$Sequence))
 plotSequenceLengthHistogram(dfGene, "Sequence", binwidth = 150)
 
 #Filtering search by sequence length to obtain sequences of similar lengths. Based on the summary and histogram, a majority of sequence lengths were approximately between 1000 to 1050 basepairs. Fetch appropriate sequences and merge files into a dataframe.
