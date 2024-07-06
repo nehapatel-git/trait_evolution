@@ -14,13 +14,12 @@ source("scripts/Entrez_Functions.R")
 #Functions----
 
 #Function to generate a histogram for # bp of sequences
-plotbpLengthHistogram <- function(df, sequenceColumn, binwidth = 5) {
+plotbpLengthHist <- function(df, sequenceColumn, binwidth = 5) {
   ggplot(df, aes(x = nchar(.data[[sequenceColumn]]))) +
     geom_histogram(binwidth = binwidth, fill = "blue", color = "black") +
     labs(x = "Sequence Length (bp)", y = "Frequency") +
-    ggtitle(paste("Distribution of Sequence length"))
+    ggtitle(paste("Distribution of Sequence Length"))
 }
-
 
 #Data Acquisition and Exploration----
 
@@ -43,30 +42,28 @@ gene_search <- entrez_search(db = "nuccore", term = search_term, retmax = maxHit
 gene_fetch <- FetchFastaFiles(searchTerm = search_term, seqsPerFile = 100, fastaFileName = "raw_data/gene_fetch/gene_fetch.fasta")
 
 #Merge seqeunce files into one dataframe
-gene_seqs <- MergeFastaFiles(filePattern = "gene_fetch*")
+gene_seqs <- MergeFastaFiles(filePath = "raw_data/gene_fetch", filePattern = "gene_fetch*")
 
 #Determine range of sequences to narrow search and reduce variability of sequence length
 summary(nchar(gene_seqs$Sequence))
-plotSequenceLengthHistogram(dfGene, "Sequence", binwidth = 150)
+plotbpLengthHistogram(gene_seqs, "Sequence", binwidth = 150)
 
-#Filtering search by sequence length to obtain sequences of similar lengths. Based on the summary and histogram, a majority of sequence lengths were approximately between 1000 to 1050 basepairs. Fetch appropriate sequences and merge files into a dataframe.
+#Filter the sequence dataframe for sequences of similar lengths.
 min_length <- 1000
 max_length <- 1050
-dfGene <- dfGene %>%
+gene_seqs <- gene_seqs %>%
   filter(nchar(Sequence) >= min_length, nchar(Sequence) <= max_length)
 
-#Checking if filtering by sequence length worked. The result contains sequences of less variable sequence length. 
-plotSequenceLengthHistogram(dfGene, "Sequence")
-summary(nchar(dfGene$Sequence))
-
+#Check if filtering by sequence length worked. The result should contain sequences of less variability in length.
+plotbpLengthHist(gene_seqs, "Sequence")
+summary(nchar(gene_seqs$Sequence))
 
 #Determine how many unknown nucleotides and gaps are present in data
-table(str_count(dfGene$Sequence, "N"))
-table(str_count(dfGene$Sequence, "-"))
+table(str_count(gene_seqs$Sequence, "N"))
+table(str_count(gene_seqs$Sequence, "-"))
 
 #View sequences on a text edit application to look out for improper data
 write.table(dfGene, file = "view_sequences.txt", sep = "\t", col.names = TRUE, row.names = FALSE)
-
 
 #Filter sequences to remove sequences with N's at the beginning and end, and  sequences containing 0.1% N's or greater. Put filtered sequences into a seperate column
 missing.data <- 0.01

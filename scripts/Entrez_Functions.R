@@ -1,5 +1,8 @@
 # Entrez functions.
 
+# Credit: Jacqueline May (have to find more info)
+# Modified : Neha Patel
+
 FetchFastaFiles <- function(searchTerm, seqsPerFile = 100, fastaFileName) {
   
   # This function will fetch FASTA files from NCBI nuccore based on a provided search term.
@@ -25,14 +28,16 @@ FetchFastaFiles <- function(searchTerm, seqsPerFile = 100, fastaFileName) {
   
 }
 
-MergeFastaFiles <- function(filePattern) {
+MergeFastaFiles <- function(filePath, filePattern) {
   
   # This function merges multiple FASTA files into one dataframe.
+  
+  # filePath = Character vector containing path to FASTA files
   
   # filePattern = Character vector containing common pattern in FASTA file names
   
   # Read the FASTA files in.
-  fastaFiles <- list.files(pattern = filePattern)
+  fastaFiles <- list.files(path = filePath, pattern = filePattern, full.names = TRUE)
   l_fastaFiles <- lapply(fastaFiles, readDNAStringSet)
   
   # Convert them into dataframes.
