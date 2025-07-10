@@ -9,27 +9,28 @@ library(utils)
 library(tidyverse)
 library(phytools)
 library(ggplot2)
-source("scripts/Entrez_Functions.R")
-
-#Functions----
-
-#Function to generate a histogram for # bp of sequences
-plotbpLengthHist <- function(df, sequenceColumn, binwidth = 5) {
-  ggplot(df, aes(x = nchar(.data[[sequenceColumn]]))) +
-    geom_histogram(binwidth = binwidth, fill = "blue", color = "black") +
-    labs(x = "Sequence Length (bp)", y = "Frequency") +
-    ggtitle(paste("Distribution of Sequence Length"))
-}
+source("scripts/functions.R")
 
 #Data Acquisition and Exploration----
 
-#Define taxa and gene of interest
-taxa <- "Phaethornis"
+#Define taxon and gene of interest
+taxon <- "Phaethornis"
 gene <- "ND2"
 
-search_term <- sprintf("%s[ORGN] AND %s[Gene]", taxa, gene)
+raw_fasta_path <- sprintf("data_raw/%s/%s/gene_fetch/", taxon, gene)
+processed_path  <- sprintf("data_processed/%s", taxon)
 
-#Determine number of hits from searching nuccore database for specified taxa and gene of interest
+if (!dir.exists(raw_fasta_path)) {
+  dir.create(raw_fasta_path, recursive = TRUE)
+}
+
+if (!dir.exists(processed_path)) {
+  dir.create(processed_path, recursive = TRUE)
+}
+
+search_term <- sprintf("%s[ORGN] AND %s[Gene]", taxon, gene)
+
+#Determine number of hits from searching nuccore database for specified taxon and gene of interest
 gene_search_explore <- entrez_search(db = "nuccore", term = search_term)
 
 #Count number of hits
@@ -39,14 +40,14 @@ maxHits <- gene_search_explore$count
 gene_search <- entrez_search(db = "nuccore", term = search_term, retmax = maxHits, use_history = T)
 
 #Download Entrez_Functions.R in current directory and load to extract FASTA files from web_history objects
-gene_fetch <- FetchFastaFiles(searchTerm = search_term, seqsPerFile = 100, fastaFileName = "raw_data/gene_fetch/gene_fetch.fasta")
+gene_fetch <- FetchFastaFiles(searchTerm = search_term, seqsPerFile = 100, fastaFileName = paste0(raw_fasta_path, "gene_fetch"))
 
 #Merge seqeunce files into one dataframe
-gene_seqs <- MergeFastaFiles(filePath = "raw_data/gene_fetch", filePattern = "gene_fetch*")
+gene_seqs <- MergeFastaFiles(filePath = raw_fasta_path, filePattern = "gene_fetch*")
 
 #Determine range of sequences to narrow search and reduce variability of sequence length
 summary(nchar(gene_seqs$Sequence))
-plotbpLengthHistogram(gene_seqs, "Sequence", binwidth = 150)
+bpLengthHist(gene_seqs, "Sequence", binwidth = 150)
 
 #Filter the sequence dataframe for sequences of similar lengths.
 min_length <- 1000
@@ -55,7 +56,7 @@ gene_seqs <- gene_seqs %>%
   filter(nchar(Sequence) >= min_length, nchar(Sequence) <= max_length)
 
 #Check if filtering by sequence length worked. The result should contain sequences of less variability in length.
-plotbpLengthHist(gene_seqs, "Sequence")
+bpLengthHist(gene_seqs, "Sequence")
 summary(nchar(gene_seqs$Sequence))
 
 #Determine how many unknown nucleotides and gaps are present in data
@@ -63,59 +64,60 @@ table(str_count(gene_seqs$Sequence, "N"))
 table(str_count(gene_seqs$Sequence, "-"))
 
 #View sequences on a text edit application to look out for improper data
-write.table(dfGene, file = "view_sequences.txt", sep = "\t", col.names = TRUE, row.names = FALSE)
+write.table(gene_seqs, file = sprintf("%s/%s_view_sequences.txt", processed_path, gene), sep = "\t", col.names = TRUE, row.names = FALSE)
 
 #Filter sequences to remove sequences with N's at the beginning and end, and  sequences containing 0.1% N's or greater. Put filtered sequences into a seperate column
 missing.data <- 0.01
-dfGene <- dfGene %>%
+gene_seqs<- gene_seqs %>%
   mutate(Sequence_Filtered = str_remove_all(Sequence, "^N+|N+$")) %>%
   filter(str_count(Sequence_Filtered, "N") <= (missing.data * str_count(Sequence)))
 
 #Check if sequences were modified by trimming N's
-all(are_equal <- dfGene$Sequence == dfGene$Sequence_Filtered)
+all(are_equal <- gene_seqs$Sequence == gene_seqs$Sequence_Filtered)
+
 #No modification other than filtering out sequences. Removing this column since it contains the same information.
-dfGene$Sequence_Filtered <- NULL
+gene_seqs$Sequence_Filtered <- NULL
 
 #Extract species name and accession numbers into separate columns
-dfGene$Species_Name <- word(dfGene$Title, 2L, 3L)
-dfGene$AccessionNumber <- word(dfGene$Title, 1L)
+gene_seqs$Species_Name <- word(gene_seqs$Title, 2L, 3L)
+gene_seqs$AccessionNumber <- word(gene_seqs$Title, 1L)
 
 #Rearrange the columns
-dfGene <- dfGene[, c("Title","AccessionNumber", "Species_Name", "Sequence")]
+gene_seqs <- gene_seqs[, c("Title","AccessionNumber", "Species_Name", "Sequence")]
 
 #Count number of unique species in this dataframe
-length(unique(dfGene$Species_Name))
+length(unique(gene_seqs$Species_Name))
 
 #Randomly select 1 sequence to represent each species in this genus for downstream analysis
 set.seed(1234)
-dfGene_Subset <- dfGene %>% 
+gene_seqs_subset <- gene_seqs %>% 
   group_by(Species_Name) %>% 
   sample_n(1)
 
 #Looking at the sequence lengths of our subset
-plotSequenceLengthHistogram(dfGene_Subset, "Sequence")
+bpLengthHist(gene_seqs_subset, "Sequence")
 
 #Sequence Alignment----
 
 #Prepare data for alignment by converting data types
-dfGene_Subset <- as.data.frame(dfGene_Subset)
-dfGene_Subset$Sequence <- DNAStringSet(dfGene_Subset$Sequence)
-names(dfGene_Subset$Sequence) <- dfGene_Subset$Species_Name
+gene_seqs_subset <- as.data.frame(gene_seqs_subset)
+gene_seqs_subset$Sequence <- DNAStringSet(gene_seqs_subset$Sequence)
+names(gene_seqs_subset$Sequence) <- gene_seqs_subset$Species_Name
 
 #Align sequences with default muscle settings
-dfGene_Subset.alignment <- DNAStringSet(muscle::muscle(dfGene_Subset$Sequence), use.names = TRUE)
+gene_seqs_subset.alignment <- DNAStringSet(muscle::muscle(gene_seqs_subset$Sequence), use.names = TRUE)
 
 #View alignment
-BrowseSeqs(dfGene_Subset.alignment)
+BrowseSeqs(gene_seqs_subset.alignment)
 
 #Export alignment into a FASTA file. 
-writeXStringSet(dfGene_Subset.alignment, file = "alignment.fasta", format = "fasta")
+writeXStringSet(gene_seqs_subset.alignment, file = paste0("data_processed/Phaethornis/",gene, "_alignment", format = ".fasta"))
 #File was viewed in MEGA. Since this gene codes for a protein, the sequences were translated with the genetic code set to vertebrate mitochondrial. Gaps were minimal, sequences were similar, and stop codons were not found in the reading frames. This indicates accuracy in the alignment, no contamination of data, and lack of reverse compliments.
 
 #Distance Matrix, Clustering, and Mapping to Phylogenetic Tree----
 
 #Convert alignment to a DNAbin data class in order to create a distance matrix to build a tree
-dist_matrix <- dist.dna(as.DNAbin(dfGene_Subset.alignment), model = "TN93")
+dist_matrix <- dist.dna(as.DNAbin(gene_seqs_subset.alignment), model = "TN93")
 
 #Create a neighbour joining tree with the distance matrix and plot it to new a dendogram
 nj_tree <- nj(dist_matrix)
@@ -123,7 +125,7 @@ plot(nj_tree)
 
 
 #Proceeding to map traits onto the phylogenetic tree. Download trait data from AVONET dataset (titled AVONET Supplementary dataset 1.xlsx). To convert to a format that is more compatible with R, save worksheet of interest (AVONET_Raw_Data) as a CSV file with the name below. Import file into R using a relative path assuming the downloaded data is in your current working session. 
-avonet_file_path <- "AVONET Supplementary dataset 1_import.csv"
+avonet_file_path <- "data_raw/AVONET Supplementary dataset 1_import.csv"
 AVONET <- read_csv(avonet_file_path, na = "NA")
 
 #Setting name of genus to genus of interest to extract appropriate data from database
@@ -141,29 +143,29 @@ genus_mean_trait <- genus_trait %>%
   summarize(Mean_Tarsus_Length = mean(Tarsus.Length))
 
 #Merge dataframes to extract only trait data for species included in the previously created phylogenetic tree
-dfGene_mean_trait <- merge(dfGene_Subset, genus_mean_trait, by.x = "Species_Name", by.y = "Species1_BirdLife", all.x = TRUE)
+gene_seqs_subset_mean_trait <- merge(gene_seqs_subset, genus_mean_trait, by.x = "Species_Name", by.y = "Species1_BirdLife", all.x = TRUE)
 
 #Confirming the sequence lengths has stayed consistent 
-plotSequenceLengthHistogram(dfGene_mean_trait, "Sequence")
+bpLengthHist(gene_seqs_subset_mean_trait, "Sequence")
 
 #Create a named vector from the dataframe for compatibility with contMap from the phytools package
-trait_vector <- setNames(dfGene_mean_trait$Mean_Tarsus_Length, dfGene_mean_trait$Species_Name)
+trait_vector <- setNames(gene_seqs_subset_mean_trait$Mean_Tarsus_Length, gene_seqs_subset_mean_trait$Species_Name)
 
 #IUCN red list data was downloaded from https://www.iucnredlist.org/ by searching for keyword "Phaethornis". Import data into R using a relative path assuming the downloaded data is in your current working session.
-iucn_file_path <- "IUCN_data.csv"
+iucn_file_path <- "data_raw/IUCN_data.csv"
 IUCN <- read_csv(iucn_file_path)
 
 #Extract species names and corresponding red list category from dataframe
 IUCN_subset <- IUCN[,c("scientificName","redlistCategory")]
 
 #Merge red list category data for species present in the dataframe used to make the phylogenetic tree
-dfGene_mean_trait_IUCN <- merge(dfGene_mean_trait, IUCN_subset, by.x = "Species_Name", by.y = "scientificName", all.x = TRUE)
+gene_seqs_subset_mean_trait_IUCN <- merge(gene_seqs_subset_mean_trait, IUCN_subset, by.x = "Species_Name", by.y = "scientificName", all.x = TRUE)
 
 #Create a named vector from the dataframe for compatibility with dotTree from the phytools package
-IUCN_vector <- setNames(dfGene_mean_trait_IUCN$redlistCategory, dfGene_mean_trait_IUCN$Species_Name)
+IUCN_vector <- setNames(gene_seqs_subset_mean_trait_IUCN$redlistCategory, gene_seqs_subset_mean_trait_IUCN$Species_Name)
 
 #Use the contMap function from the phytools package to map traits onto phylogenetic tree. Example provided in the contMap documentation was used to set features for this tree
-?contMap
+
 trait.contMap<-contMap(nj_tree, trait_vector,plot=FALSE,res=200)
 trait.contMap<-setMap(trait.contMap, c("white","#FFFFB2","#FECC5C","#FD8D3C","#E31A1C"))
 

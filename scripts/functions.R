@@ -1,6 +1,6 @@
-# Entrez functions.
+# Functions
 
-# Credit: Jacqueline May (have to find more info)
+# Credit: Jacqueline May (FetchFastaFiles, MergeFastaFiles)
 # Modified : Neha Patel
 
 FetchFastaFiles <- function(searchTerm, seqsPerFile = 100, fastaFileName) {
@@ -50,3 +50,11 @@ MergeFastaFiles <- function(filePath, filePattern) {
   
 }
 
+
+bp_hist <- function(df, seq_col_name, binwidth = 5) {
+  ggplot(df, aes(x = nchar(.data[[seq_col_name]]))) +
+    geom_histogram(binwidth = binwidth, fill = "sky_blue", color = "black") +
+    labs(x = "Sequence Length (bp)", y = "Frequency") +
+    ggtitle(paste("Distribution of Sequence Length")) +
+    theme_bw()
+}
