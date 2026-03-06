@@ -1,8 +1,12 @@
 #Load required packages----
-library(rentrez)
-library(Biostrings)
 library(tidyverse)
+library(rentrez)
+#install.packages("BiocManager")
+#BiocManager::install("Biostrings")
+library(Biostrings)
+#BiocManager::install("muscle")
 library(muscle)
+#BiocManager::install("DECIPHER")
 library(DECIPHER)
 library(ape)
 library(utils)
@@ -34,10 +38,10 @@ search_term <- sprintf("%s[ORGN] AND %s[Gene]", taxon, gene)
 gene_search_explore <- entrez_search(db = "nuccore", term = search_term)
 
 #Count number of hits
-maxHits <- gene_search_explore$count
+max_hits <- gene_search_explore$count
 
 #Use web history to fetch sequences
-gene_search <- entrez_search(db = "nuccore", term = search_term, retmax = maxHits, use_history = T)
+gene_search <- entrez_search(db = "nuccore", term = search_term, retmax = max_hits, use_history = T)
 
 #Download Entrez_Functions.R in current directory and load to extract FASTA files from web_history objects
 gene_fetch <- FetchFastaFiles(searchTerm = search_term, seqsPerFile = 100, fastaFileName = paste0(raw_fasta_path, "gene_fetch"))
@@ -47,7 +51,7 @@ gene_seqs <- MergeFastaFiles(filePath = raw_fasta_path, filePattern = "gene_fetc
 
 #Determine range of sequences to narrow search and reduce variability of sequence length
 summary(nchar(gene_seqs$Sequence))
-bpLengthHist(gene_seqs, "Sequence", binwidth = 150)
+bp_hist(gene_seqs, "Sequence", binwidth = 150)
 
 #Filter the sequence dataframe for sequences of similar lengths.
 min_length <- 1000
@@ -56,7 +60,7 @@ gene_seqs <- gene_seqs %>%
   filter(nchar(Sequence) >= min_length, nchar(Sequence) <= max_length)
 
 #Check if filtering by sequence length worked. The result should contain sequences of less variability in length.
-bpLengthHist(gene_seqs, "Sequence")
+bp_hist(gene_seqs, "Sequence")
 summary(nchar(gene_seqs$Sequence))
 
 #Determine how many unknown nucleotides and gaps are present in data
@@ -67,10 +71,10 @@ table(str_count(gene_seqs$Sequence, "-"))
 write.table(gene_seqs, file = sprintf("%s/%s_view_sequences.txt", processed_path, gene), sep = "\t", col.names = TRUE, row.names = FALSE)
 
 #Filter sequences to remove sequences with N's at the beginning and end, and  sequences containing 0.1% N's or greater. Put filtered sequences into a seperate column
-missing.data <- 0.01
+missing_data <- 0.01
 gene_seqs<- gene_seqs %>%
   mutate(Sequence_Filtered = str_remove_all(Sequence, "^N+|N+$")) %>%
-  filter(str_count(Sequence_Filtered, "N") <= (missing.data * str_count(Sequence)))
+  filter(str_count(Sequence_Filtered, "N") <= (missing_data * str_count(Sequence)))
 
 #Check if sequences were modified by trimming N's
 all(are_equal <- gene_seqs$Sequence == gene_seqs$Sequence_Filtered)
@@ -95,7 +99,7 @@ gene_seqs_subset <- gene_seqs %>%
   sample_n(1)
 
 #Looking at the sequence lengths of our subset
-bpLengthHist(gene_seqs_subset, "Sequence")
+bp_hist(gene_seqs_subset, "Sequence")
 
 #Sequence Alignment----
 
@@ -103,6 +107,9 @@ bpLengthHist(gene_seqs_subset, "Sequence")
 gene_seqs_subset <- as.data.frame(gene_seqs_subset)
 gene_seqs_subset$Sequence <- DNAStringSet(gene_seqs_subset$Sequence)
 names(gene_seqs_subset$Sequence) <- gene_seqs_subset$Species_Name
+
+# save sequences
+write_csv(gene_seqs_subset, sprintf("data_processed/%s/%s_seq.csv", taxon, gene))
 
 #Align sequences with default muscle settings
 gene_seqs_subset.alignment <- DNAStringSet(muscle::muscle(gene_seqs_subset$Sequence), use.names = TRUE)
@@ -122,3 +129,6 @@ dist_matrix <- dist.dna(as.DNAbin(gene_seqs_subset.alignment), model = "TN93")
 #Create a neighbour joining tree with the distance matrix and plot it to new a dendogram
 nj_tree <- nj(dist_matrix)
 plot(nj_tree)
+
+# save tree
+
