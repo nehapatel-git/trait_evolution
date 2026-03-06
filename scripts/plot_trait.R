@@ -64,7 +64,7 @@ if (!dir.exists("figures")) {
   dir.create("figures")
 }
 
-png(sprintf("figures/%s_%s_plot.png", taxon, gene))
+png(sprintf("figures/%s_%s_plot.png", taxon, gene), width=8, height=6, units="in", res = 300)
 
 #Plot red list category as traits to the phylogenetic tree with the dotTree function from phytools
 dotTree(nj_tree,IUCN_vector,legend = FALSE,length=5,fsize=0.8,lwd=7,ftype="i", colors = cols)
