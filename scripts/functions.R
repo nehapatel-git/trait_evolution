@@ -14,7 +14,7 @@ fetch_fasta_files <- function(search_term, seqs_per_file = 100, fasta_file) {
   search2 <- entrez_search(db = "nuccore", term = search_term, retmax = search1$count, use_history = T)
   
   # Fetch the sequences in FASTA format using the web_history object.
-  for (start_rec in seq(0, search2$retmax, seqsPerFile)) {
+  for (start_rec in seq(0, search2$retmax, seqs_per_file)) {
     fname <- paste(fasta_file, start_rec, ".fasta", sep = "")
     recs <- entrez_fetch(db = "nuccore", web_history = search2$web_history, rettype = "fasta", retstart = start_rec, retmax = seqs_per_file)
     write(recs, fname)
@@ -33,7 +33,7 @@ merge_fasta_files <- function(file_path, file_pattern) {
   
   # Read the FASTA files in.
   fasta_files <- list.files(path = file_path, pattern = file_pattern, full.names = TRUE)
-  l_fastaFiles <- lapply(fasta_files, readDNAStringSet)
+  l_fasta_files <- lapply(fasta_files, readDNAStringSet)
   
   # Convert them into dataframes.
   l_df_fasta_files <- lapply(l_fasta_files, function(x) data.frame(Title = names(x), Sequence = paste(x) ))

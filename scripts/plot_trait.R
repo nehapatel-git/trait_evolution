@@ -30,9 +30,6 @@ mean_trait <- trait %>%
 #Merge dataframes to extract only trait data for species included in the previously created phylogenetic tree
 seq_subset_mean_trait <- merge(seq_subset, mean_trait, by.x = "Species_Name", by.y = "Species1_BirdLife", all.x = TRUE)
 
-#Confirming the sequence lengths has stayed consistent 
-bp_hist(seq_subset_mean_trait, "Sequence")
-
 #Create a named vector from the dataframe for compatibility with contMap from the phytools package
 trait_vector <- setNames(seq_subset_mean_trait$Mean_Tarsus_Length, seq_subset_mean_trait$Species_Name)
 

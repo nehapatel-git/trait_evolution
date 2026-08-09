@@ -10,7 +10,7 @@ library(muscle)
 library(DECIPHER)
 library(ape)
 library(utils)
-library(tidyverse)
+library(phangorn)
 library(phytools)
 library(ggplot2)
 source("scripts/functions.R")
@@ -32,6 +32,7 @@ if (!dir.exists(processed_path)) {
   dir.create(processed_path, recursive = TRUE)
 }
 
+
 search_term <- sprintf("%s[ORGN] AND %s[Gene]", taxon, gene)
 
 #Determine number of hits from searching nuccore database for specified taxon and gene of interest
@@ -44,10 +45,10 @@ max_hits <- gene_search_explore$count
 gene_search <- entrez_search(db = "nuccore", term = search_term, retmax = max_hits, use_history = T)
 
 #Download Entrez_Functions.R in current directory and load to extract FASTA files from web_history objects
-gene_fetch <- FetchFastaFiles(searchTerm = search_term, seqsPerFile = 100, fastaFileName = paste0(raw_fasta_path, "gene_fetch"))
+gene_fetch <- fetch_fasta_files(search_term = search_term, seqs_per_file = 100, fasta_file = paste0(raw_fasta_path, "gene_fetch"))
 
 #Merge seqeunce files into one dataframe
-gene_seqs <- MergeFastaFiles(filePath = raw_fasta_path, filePattern = "gene_fetch*")
+gene_seqs <- merge_fasta_files(file_path = raw_fasta_path, file_pattern = "gene_fetch*")
 
 #Determine range of sequences to narrow search and reduce variability of sequence length
 summary(nchar(gene_seqs$Sequence))
@@ -57,7 +58,7 @@ bp_hist(gene_seqs, "Sequence", binwidth = 150)
 min_length <- 1000
 max_length <- 1050
 gene_seqs <- gene_seqs %>%
-  filter(nchar(Sequence) >= min_length, nchar(Sequence) <= max_length)
+  dplyr::filter(nchar(Sequence) >= min_length, nchar(Sequence) <= max_length)
 
 #Check if filtering by sequence length worked. The result should contain sequences of less variability in length.
 bp_hist(gene_seqs, "Sequence")
@@ -73,14 +74,14 @@ write.table(gene_seqs, file = sprintf("%s/%s_view_sequences.txt", processed_path
 #Filter sequences to remove sequences with N's at the beginning and end, and  sequences containing 0.1% N's or greater. Put filtered sequences into a seperate column
 missing_data <- 0.01
 gene_seqs<- gene_seqs %>%
-  mutate(Sequence_Filtered = str_remove_all(Sequence, "^N+|N+$")) %>%
-  filter(str_count(Sequence_Filtered, "N") <= (missing_data * str_count(Sequence)))
+  dplyr::mutate(sequence_filtered = str_remove_all(Sequence, "^N+|N+$")) %>%
+  dplyr::filter(str_count(sequence_filtered, "N") <= (missing_data * str_count(Sequence)))
 
-#Check if sequences were modified by trimming N's
-all(are_equal <- gene_seqs$Sequence == gene_seqs$Sequence_Filtered)
+#Check if sequences were modified by trimming N's. if TRUE then no changes were made
+all(are_equal <- gene_seqs$Sequence == gene_seqs$sequence_filtered)
 
 #No modification other than filtering out sequences. Removing this column since it contains the same information.
-gene_seqs$Sequence_Filtered <- NULL
+gene_seqs$sequence_filtered <- NULL
 
 #Extract species name and accession numbers into separate columns
 gene_seqs$Species_Name <- word(gene_seqs$Title, 2L, 3L)
@@ -95,8 +96,8 @@ length(unique(gene_seqs$Species_Name))
 #Randomly select 1 sequence to represent each species in this genus for downstream analysis
 set.seed(1234)
 gene_seqs_subset <- gene_seqs %>% 
-  group_by(Species_Name) %>% 
-  sample_n(1)
+  dplyr::group_by(Species_Name) %>% 
+  dplyr::sample_n(1)
 
 #Looking at the sequence lengths of our subset
 bp_hist(gene_seqs_subset, "Sequence")
@@ -111,6 +112,7 @@ names(gene_seqs_subset$Sequence) <- gene_seqs_subset$Species_Name
 # save sequences
 write_csv(gene_seqs_subset, sprintf("data_processed/%s/%s_seq.csv", taxon, gene))
 
+
 #Align sequences with default muscle settings
 gene_seqs_subset.alignment <- DNAStringSet(muscle::muscle(gene_seqs_subset$Sequence), use.names = TRUE)
 
@@ -123,12 +125,19 @@ writeXStringSet(gene_seqs_subset.alignment, file = paste0("data_processed/Phaeth
 
 #Distance Matrix, Clustering, and Mapping to Phylogenetic Tree----
 
-#Convert alignment to a DNAbin data class in order to create a distance matrix to build a tree
-dist_matrix <- dist.dna(as.DNAbin(gene_seqs_subset.alignment), model = "TN93")
-
+dist_matrix <- dist.dna(as.DNAbin(gene_seqs_subset.alignment), model = "TN93", pairwise.deletion = TRUE)
 #Create a neighbour joining tree with the distance matrix and plot it to new a dendogram
+
 nj_tree <- nj(dist_matrix)
+
 plot(nj_tree)
 
-# save tree
+phy_dat <- as.phyDat(gene_seqs_subset.alignment)
 
+model_test <- modelTest(phy_dat)
+fit_model_test <- pml_bb(model_test)
+plot(fit_model_test$tree)
+plotBS(fit_model_test$tree)
+
+#save tree
+write.tree(fit_model_test$tree, sprintf("%s/%s.tree", processed_path, taxon))
