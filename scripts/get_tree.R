@@ -32,7 +32,6 @@ if (!dir.exists(processed_path)) {
   dir.create(processed_path, recursive = TRUE)
 }
 
-
 search_term <- sprintf("%s[ORGN] AND %s[Gene]", taxon, gene)
 
 #Determine number of hits from searching nuccore database for specified taxon and gene of interest
@@ -111,7 +110,6 @@ names(gene_seqs_subset$Sequence) <- gene_seqs_subset$Species_Name
 
 # save sequences
 write_csv(gene_seqs_subset, sprintf("data_processed/%s/%s_seq.csv", taxon, gene))
-
 
 #Align sequences with default muscle settings
 gene_seqs_subset.alignment <- DNAStringSet(muscle::muscle(gene_seqs_subset$Sequence), use.names = TRUE)
